@@ -2,7 +2,7 @@
 
 import { Calculator, CheckCircle2, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { FinanceSnapshot } from "@/lib/mock-data";
+import type { FinanceSnapshot } from "@/lib/dashboard-data";
 import { currency, getPurchaseAdvice, type PurchaseAdvice } from "@/lib/finance";
 
 type PurchaseAdvisorProps = {

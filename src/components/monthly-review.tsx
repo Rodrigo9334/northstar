@@ -3,7 +3,7 @@
 import { ReceiptText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { currency } from "@/lib/finance";
-import type { ReviewMonth } from "@/lib/mock-data";
+import type { ReviewMonth } from "@/lib/dashboard-data";
 
 type MonthlyReviewProps = {
   months: ReviewMonth[];
@@ -75,7 +75,7 @@ export function MonthlyReview({ months }: MonthlyReviewProps) {
             <p className="text-sm text-slate-300">{currency(selectedCategory.total)}</p>
           </div>
           <div className="divide-y divide-white/10">
-            {selectedCategory.transactions.map((transaction) => (
+            {selectedCategory.transactions.length > 0 ? selectedCategory.transactions.map((transaction) => (
               <div className="flex items-center justify-between gap-4 px-4 py-3" key={transaction.id}>
                 <div>
                   <p className="font-medium text-white">{transaction.merchant}</p>
@@ -83,7 +83,9 @@ export function MonthlyReview({ months }: MonthlyReviewProps) {
                 </div>
                 <p className="font-semibold text-white">{currency(transaction.amount)}</p>
               </div>
-            ))}
+            )) : (
+              <div className="px-4 py-5 text-sm text-slate-400">No transactions for this category.</div>
+            )}
           </div>
         </div>
       </div>
