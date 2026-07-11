@@ -1,14 +1,24 @@
 export type FinanceSnapshot = {
   checking: number;
+  travelFund: number;
+  travelFundGoal: number;
+  travelFundYearEndProjection: number;
   vacationFund: number;
   totalCash: number;
   cashGoal: number;
   safetyFloor: number;
   weeklyBudget: number;
   spentThisWeek: number;
+  weeklyCategories: WeeklyCategory[];
+  weeklyTravelContribution: number;
   weeklyVacationTransfer: number;
   vacationGoal: number;
   knownFirstOfMonthBills: number;
+};
+
+export type WeeklyCategory = {
+  name: string;
+  total: number;
 };
 
 export type Transaction = {
@@ -30,6 +40,7 @@ export type ReviewMonth = {
 };
 
 export type AccountRow = {
+  id: string;
   current_balance: number | string | null;
   is_active: boolean | null;
   name: string;
@@ -39,6 +50,7 @@ export type AccountRow = {
 
 export type TransactionRow = {
   id: string;
+  account_id: string;
   amount: number | string;
   category: string | null;
   date: string;
@@ -67,6 +79,9 @@ export type GoalRow = {
 
 const CASH_GOAL_DEFAULT = 30000;
 const SAFETY_FLOOR_DEFAULT = 20000;
+const TRAVEL_FUND_DEFAULT = 617;
+const TRAVEL_FUND_GOAL_DEFAULT = 3000;
+const WEEKLY_TRAVEL_CONTRIBUTION_DEFAULT = 50;
 const WEEKLY_BUDGET_DEFAULT = 500;
 const monthNames = [
   "January",
@@ -106,8 +121,81 @@ function endOfWeek(date = new Date()) {
   return next;
 }
 
-function isOutflow(transaction: TransactionRow) {
-  return amount(transaction.amount) > 0;
+function weeksUntilYearEnd(date = new Date()) {
+  const nextMonday = startOfWeek(date);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+
+  const yearEnd = new Date(date.getFullYear() + 1, 0, 1);
+  const millisecondsPerWeek = 7 * 24 * 60 * 60 * 1000;
+
+  return Math.max(0, Math.ceil((yearEnd.getTime() - nextMonday.getTime()) / millisecondsPerWeek));
+}
+
+function countsTowardWeeklyBudget(transaction: TransactionRow) {
+  if (amount(transaction.amount) <= 0) {
+    return false;
+  }
+
+  const excludedCategories = [
+    "BANK_FEES",
+    "TRANSFER_IN",
+    "TRANSFER_OUT",
+    "LOAN_PAYMENTS",
+    "RENT_AND_UTILITIES",
+    "INCOME",
+    "BILLS_AND_UTILITIES"
+  ];
+  const description = `${transaction.category ?? ""} ${transaction.merchant_name ?? ""} ${transaction.name}`.toLowerCase();
+
+  if (
+    ["bill", "utility", "utilities", "rent", "mortgage", "loan", "insurance", "travel fund"].some((term) =>
+      description.includes(term)
+    )
+  ) {
+    return false;
+  }
+
+  return !excludedCategories.includes(transaction.category ?? "");
+}
+
+function weeklyCategoryName(transaction: TransactionRow) {
+  const description = `${transaction.category ?? ""} ${transaction.merchant_name ?? ""} ${transaction.name}`.toLowerCase();
+
+  if (description.includes("coffee") || description.includes("starbucks") || description.includes("dunkin")) {
+    return "Coffee";
+  }
+
+  if (description.includes("food") || description.includes("restaurant") || description.includes("dining") || description.includes("grocery")) {
+    return "Food";
+  }
+
+  if (description.includes("gas") || description.includes("fuel") || description.includes("transport")) {
+    return "Gas";
+  }
+
+  if (description.includes("shop") || description.includes("merchandise") || description.includes("retail")) {
+    return "Shopping";
+  }
+
+  if (description.includes("entertainment") || description.includes("recreation") || description.includes("movie")) {
+    return "Entertainment";
+  }
+
+  return "Other";
+}
+
+function buildWeeklyCategories(transactions: TransactionRow[]) {
+  const categories = new Map<string, number>();
+
+  transactions.forEach((transaction) => {
+    const name = weeklyCategoryName(transaction);
+
+    categories.set(name, (categories.get(name) ?? 0) + amount(transaction.amount));
+  });
+
+  return Array.from(categories.entries())
+    .map(([name, total]) => ({ name, total }))
+    .sort((left, right) => right.total - left.total);
 }
 
 export function buildFinanceSnapshot({
@@ -122,25 +210,35 @@ export function buildFinanceSnapshot({
   transactions: TransactionRow[];
 }): FinanceSnapshot {
   const activeAccounts = accounts.filter((account) => account.is_active !== false);
+  const activeAccountIds = new Set(activeAccounts.map((account) => account.id));
+  const activeTransactions = transactions.filter((transaction) =>
+    activeAccountIds.has(transaction.account_id)
+  );
+
   const checkingAccount =
     activeAccounts.find((account) => account.subtype === "checking") ??
     activeAccounts.find((account) => includes(account.name, "checking"));
-  const vacationGoal = goals.find((goal) => includes(goal.name, "vacation") && goal.status !== "archived");
+  const travelGoal = goals.find(
+    (goal) => (includes(goal.name, "travel") || includes(goal.name, "vacation")) && goal.status !== "archived"
+  );
   const cashGoal = goals.find((goal) => includes(goal.name, "cash") && goal.status !== "archived");
   const safetyGoal = goals.find((goal) => includes(goal.name, "safety") && goal.status !== "archived");
-  const weeklyBudget = budgets.find((budget) => budget.is_active !== false && budget.period === "weekly");
   const firstOfMonthBills = budgets.find((budget) => {
     const name = budget.name.toLowerCase();
     return budget.is_active !== false && budget.period === "monthly" && name.includes("bill");
   });
   const weekStart = startOfWeek();
   const weekEnd = endOfWeek();
-  const spentThisWeek = transactions
-    .filter((transaction) => {
-      const transactionDate = new Date(`${transaction.date}T00:00:00`);
-      return transactionDate >= weekStart && transactionDate < weekEnd && isOutflow(transaction);
-    })
-    .reduce((sum, transaction) => sum + amount(transaction.amount), 0);
+  const weeklyTransactions = activeTransactions.filter((transaction) => {
+    const transactionDate = new Date(`${transaction.date}T00:00:00`);
+
+    return transactionDate >= weekStart && transactionDate < weekEnd && countsTowardWeeklyBudget(transaction);
+  });
+  const spentThisWeek = weeklyTransactions.reduce((sum, transaction) => sum + amount(transaction.amount), 0);
+  const travelFund = amount(travelGoal?.current_amount) || TRAVEL_FUND_DEFAULT;
+  const weeklyTravelContribution = amount(travelGoal?.weekly_contribution) || WEEKLY_TRAVEL_CONTRIBUTION_DEFAULT;
+  const travelFundGoal = amount(travelGoal?.target_amount) || TRAVEL_FUND_GOAL_DEFAULT;
+  const travelFundYearEndProjection = travelFund + weeklyTravelContribution * weeksUntilYearEnd();
 
   const totalCash = activeAccounts
     .filter((account) => account.type === "depository" || account.type === "cash")
@@ -148,14 +246,19 @@ export function buildFinanceSnapshot({
 
   return {
     checking: amount(checkingAccount?.current_balance),
-    vacationFund: amount(vacationGoal?.current_amount),
+    travelFund,
+    travelFundGoal,
+    travelFundYearEndProjection,
+    vacationFund: travelFund,
     totalCash,
     cashGoal: amount(cashGoal?.target_amount) || CASH_GOAL_DEFAULT,
     safetyFloor: amount(safetyGoal?.target_amount) || SAFETY_FLOOR_DEFAULT,
-    weeklyBudget: amount(weeklyBudget?.amount) || WEEKLY_BUDGET_DEFAULT,
-    spentThisWeek: spentThisWeek || amount(weeklyBudget?.spent_amount),
-    weeklyVacationTransfer: amount(vacationGoal?.weekly_contribution),
-    vacationGoal: amount(vacationGoal?.target_amount),
+    weeklyBudget: WEEKLY_BUDGET_DEFAULT,
+    spentThisWeek,
+    weeklyCategories: buildWeeklyCategories(weeklyTransactions),
+    weeklyTravelContribution,
+    weeklyVacationTransfer: weeklyTravelContribution,
+    vacationGoal: travelFundGoal,
     knownFirstOfMonthBills: amount(firstOfMonthBills?.amount)
   };
 }

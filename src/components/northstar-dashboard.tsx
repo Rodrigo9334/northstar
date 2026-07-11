@@ -3,16 +3,13 @@
 import {
   Banknote,
   CalendarDays,
-  Check,
   Compass,
-  CreditCard,
   Landmark,
-  Pencil,
   PiggyBank,
   ReceiptText,
-  ShieldCheck,
-  Target,
-  X
+  RefreshCw,
+  Settings as SettingsIcon,
+  Target
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
@@ -54,33 +51,43 @@ declare global {
 
 const emptySnapshot: FinanceSnapshot = {
   checking: 0,
+  travelFund: 617,
+  travelFundGoal: 3000,
+  travelFundYearEndProjection: 617,
   vacationFund: 0,
   totalCash: 0,
   cashGoal: 30000,
   safetyFloor: 20000,
   weeklyBudget: 0,
   spentThisWeek: 0,
+  weeklyCategories: [],
+  weeklyTravelContribution: 50,
   weeklyVacationTransfer: 0,
   vacationGoal: 0,
   knownFirstOfMonthBills: 0
 };
 
 const navigation = [
-  { href: "#today", label: "Today", icon: Compass },
-  { href: "#weekly-budget", label: "Weekly", icon: CalendarDays },
+  { href: "#home", label: "Home", icon: Compass },
+  { href: "#spending", label: "Spending", icon: ReceiptText },
   { href: "#goals", label: "Goals", icon: Target },
-  { href: "#monthly-review", label: "Review", icon: ReceiptText },
-  { href: "#purchase-advisor", label: "Advisor", icon: CreditCard }
+  { href: "#settings", label: "Settings", icon: SettingsIcon }
 ];
 
 type DashboardState = {
   accountCount: number;
+  activeAccountCount: number;
   error: string;
   hasFinancialData: boolean;
   isLoading: boolean;
+  lastRefreshedAt: string | null;
   monthlyReview: ReviewMonth[];
   snapshot: FinanceSnapshot;
   transactionCount: number;
+};
+
+type PlaidItemRow = {
+  last_synced_at: string | null;
 };
 
 export function NorthStarDashboard() {
@@ -88,17 +95,17 @@ export function NorthStarDashboard() {
   const [session, setSession] = useState<Session | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isConnectingBank, setIsConnectingBank] = useState(false);
-  const [isEditingWeeklyBudget, setIsEditingWeeklyBudget] = useState(false);
-  const [isSavingWeeklyBudget, setIsSavingWeeklyBudget] = useState(false);
+  const [isRefreshingDcuData, setIsRefreshingDcuData] = useState(false);
   const [plaidError, setPlaidError] = useState("");
-  const [weeklyBudgetError, setWeeklyBudgetError] = useState("");
-  const [weeklyBudgetInput, setWeeklyBudgetInput] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const [hasAttemptedTransactionSync, setHasAttemptedTransactionSync] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardState>({
     accountCount: 0,
+    activeAccountCount: 0,
     error: "",
     hasFinancialData: false,
     isLoading: true,
+    lastRefreshedAt: null,
     monthlyReview: buildMonthlyReview([]),
     snapshot: emptySnapshot,
     transactionCount: 0
@@ -181,55 +188,14 @@ export function NorthStarDashboard() {
 
   const snapshot = dashboard.snapshot;
   const weeklyRemaining = snapshot.weeklyBudget - snapshot.spentThisWeek;
-  const safeToSpend = Math.max(0, snapshot.checking - snapshot.safetyFloor - snapshot.knownFirstOfMonthBills);
   const weeklyStatus = getWeeklyBudgetStatus(snapshot.spentThisWeek, snapshot.weeklyBudget || 1);
-  const vacationProgress = percentOfGoal(snapshot.vacationFund, snapshot.vacationGoal);
+  const travelProgress = percentOfGoal(snapshot.travelFund, snapshot.travelFundGoal);
   const cashGoalProgress = percentOfGoal(snapshot.totalCash, snapshot.cashGoal);
   const weeklySpendProgress = percentOfGoal(snapshot.spentThisWeek, snapshot.weeklyBudget);
   const defaultAdvice = getPurchaseAdvice(420, snapshot.checking, snapshot.safetyFloor);
   const showRealDashboard = !dashboard.isLoading && !dashboard.error && dashboard.hasFinancialData;
   const showEmptyState = !dashboard.isLoading && !dashboard.error && !dashboard.hasFinancialData;
-
-  function startEditingWeeklyBudget() {
-    setWeeklyBudgetInput(String(Math.round(snapshot.weeklyBudget)));
-    setWeeklyBudgetError("");
-    setIsEditingWeeklyBudget(true);
-  }
-
-  function cancelEditingWeeklyBudget() {
-    setWeeklyBudgetInput("");
-    setWeeklyBudgetError("");
-    setIsEditingWeeklyBudget(false);
-  }
-
-  async function saveWeeklyBudget(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!session || !supabase) {
-      return;
-    }
-
-    const nextAmount = Number(weeklyBudgetInput);
-
-    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
-      setWeeklyBudgetError("Enter a weekly budget greater than $0.");
-      return;
-    }
-
-    setIsSavingWeeklyBudget(true);
-    setWeeklyBudgetError("");
-
-    try {
-      await saveCurrentWeekBudget(supabase, session, nextAmount);
-      await loadDashboardData(supabase, setDashboard);
-      setIsEditingWeeklyBudget(false);
-    } catch (error) {
-      console.error("[dashboard] Could not save weekly budget.", getSafeSupabaseError(error));
-      setWeeklyBudgetError("Could not save weekly budget. Please try again.");
-    } finally {
-      setIsSavingWeeklyBudget(false);
-    }
-  }
+  const lastRefreshedLabel = formatLastRefreshed(dashboard.lastRefreshedAt);
 
   async function connectBankAccount() {
     if (!session || !supabase) {
@@ -305,6 +271,37 @@ export function NorthStarDashboard() {
     }
   }
 
+  async function refreshDcuData() {
+    if (!session || !supabase || isRefreshingDcuData) {
+      return;
+    }
+
+    setIsRefreshingDcuData(true);
+    setRefreshError("");
+
+    try {
+      const accessToken = await getSupabaseAccessToken(supabase, session);
+      const response = await fetch("/api/plaid/refresh-dcu-data", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        method: "POST"
+      });
+      const data = await readJsonResponse<{ error?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `Could not refresh DCU data. (${response.status})`);
+      }
+
+      await loadDashboardData(supabase, setDashboard);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "Could not refresh DCU data.");
+    } finally {
+      setIsRefreshingDcuData(false);
+    }
+  }
+
   return (
     <main className="min-h-screen pb-24 text-white lg:pb-8">
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-4 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:px-8 lg:py-8">
@@ -347,7 +344,7 @@ export function NorthStarDashboard() {
                 </span>
                 <div>
                   <p className="text-lg font-semibold">NorthStar</p>
-                  <p className="text-xs text-slate-400">Today</p>
+                  <p className="text-xs text-slate-400">Home</p>
                 </div>
               </div>
               <span className="rounded-md border border-white/10 px-3 py-2 text-xs font-medium text-slate-300">
@@ -378,11 +375,11 @@ export function NorthStarDashboard() {
 
           {showRealDashboard ? (
             <>
-              <section id="today" className="scroll-mt-24 overflow-hidden rounded-md border border-white/10 bg-panel/90 shadow-glow">
+              <section id="home" className="scroll-mt-24 overflow-hidden rounded-md border border-white/10 bg-panel/90 shadow-glow">
                 <div className="border-b border-white/10 px-5 py-5 sm:px-6 lg:px-7">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">Today</p>
+                      <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">Home</p>
                       <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-5xl">
                         Cash clarity for the week ahead
                       </h1>
@@ -390,40 +387,61 @@ export function NorthStarDashboard() {
                     <div className="min-w-52 rounded-md border border-white/10 bg-white/[0.04] px-4 py-3">
                       <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Known bills</p>
                       <p className="mt-2 text-2xl font-semibold text-white">{currency(snapshot.knownFirstOfMonthBills)}</p>
+                      <div className="mt-4 border-t border-white/10 pt-3">
+                        <button
+                          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isRefreshingDcuData}
+                          onClick={refreshDcuData}
+                          type="button"
+                        >
+                          <RefreshCw size={16} className={isRefreshingDcuData ? "animate-spin text-mint" : "text-mint"} />
+                          {isRefreshingDcuData ? "Refreshing..." : "Refresh DCU Data"}
+                        </button>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                          Last refreshed: {lastRefreshedLabel}
+                        </p>
+                        {refreshError ? <p className="mt-2 text-xs leading-5 text-rose">{refreshError}</p> : null}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
                   <DashboardMetric
-                    icon={Banknote}
-                    label="Total Cash"
-                    value={currency(snapshot.totalCash)}
-                    helper={`${Math.round(cashGoalProgress)}% of ${currency(snapshot.cashGoal)} goal`}
-                  />
-                  <DashboardMetric
                     icon={Landmark}
-                    label="Checking"
+                    label="Checking Balance"
                     value={currency(snapshot.checking)}
                     helper={`${currency(snapshot.safetyFloor)} floor`}
                   />
                   <DashboardMetric
-                    icon={PiggyBank}
-                    label="Vacation Fund"
-                    value={currency(snapshot.vacationFund)}
-                    helper={`${currency(snapshot.weeklyVacationTransfer)} weekly transfer`}
+                    icon={CalendarDays}
+                    label="Weekly Budget"
+                    value={currency(snapshot.weeklyBudget)}
+                    helper={`${currency(snapshot.spentThisWeek)} spent this week`}
                   />
                   <DashboardMetric
-                    icon={ShieldCheck}
-                    label="Safe To Spend"
-                    value={currency(safeToSpend)}
-                    helper="After floor and known bills"
+                    icon={Banknote}
+                    label="Remaining This Week"
+                    value={currency(weeklyRemaining)}
+                    helper={`${Math.round(weeklySpendProgress)}% used`}
+                  />
+                  <DashboardMetric
+                    icon={PiggyBank}
+                    label="Travel Fund"
+                    value={currency(snapshot.travelFund)}
+                    helper={`${currency(snapshot.weeklyTravelContribution)} weekly contribution`}
+                  />
+                  <DashboardMetric
+                    icon={Target}
+                    label="Year-End Cash Goal"
+                    value={`${Math.round(cashGoalProgress)}%`}
+                    helper={`${currency(snapshot.totalCash)} of ${currency(snapshot.cashGoal)}`}
                     tone="mint"
                   />
                 </div>
               </section>
 
-              <section id="weekly-budget" className="scroll-mt-24 rounded-md border border-white/10 bg-panel/90 p-5 shadow-glow sm:p-6">
+              <section className="rounded-md border border-white/10 bg-panel/90 p-5 shadow-glow sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
@@ -439,65 +457,63 @@ export function NorthStarDashboard() {
 
                 <div className="mt-6 grid grid-cols-3 gap-5">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Budget</p>
-                      {!isEditingWeeklyBudget ? (
-                        <button
-                          aria-label="Edit weekly budget"
-                          className="rounded-md p-1 text-slate-500 transition hover:bg-white/[0.06] hover:text-mint"
-                          onClick={startEditingWeeklyBudget}
-                          type="button"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      ) : null}
-                    </div>
-                    {isEditingWeeklyBudget ? (
-                      <form className="mt-2" onSubmit={saveWeeklyBudget}>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <input
-                            className="min-h-10 w-full min-w-0 rounded-md border border-white/10 bg-ink/80 px-3 text-2xl font-semibold text-white outline-none transition focus:border-mint/70 sm:text-3xl"
-                            inputMode="decimal"
-                            min="1"
-                            onChange={(event) => setWeeklyBudgetInput(event.target.value)}
-                            step="1"
-                            type="number"
-                            value={weeklyBudgetInput}
-                          />
-                          <button
-                            aria-label="Save weekly budget"
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-mint text-ink transition hover:bg-mint/90 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isSavingWeeklyBudget}
-                            type="submit"
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            aria-label="Cancel weekly budget edit"
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 text-slate-400 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isSavingWeeklyBudget}
-                            onClick={cancelEditingWeeklyBudget}
-                            type="button"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {weeklyBudgetError ? <p className="mt-2 text-xs text-red-300">{weeklyBudgetError}</p> : null}
-                      </form>
-                    ) : (
-                      <p className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{currency(snapshot.weeklyBudget)}</p>
-                    )}
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Weekly Budget</p>
+                    <p className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{currency(snapshot.weeklyBudget)}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Spent</p>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Spent This Week</p>
                     <p className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{currency(snapshot.spentThisWeek)}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Left</p>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Remaining</p>
                     <p className="mt-2 text-2xl font-semibold text-mint sm:text-3xl">{currency(weeklyRemaining)}</p>
                   </div>
                 </div>
                 <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
+              </section>
+
+              <div>
+                <PurchaseAdvisor snapshot={snapshot} defaultAdvice={defaultAdvice} />
+              </div>
+
+              <section id="spending" className="scroll-mt-24 grid gap-4">
+                <div className="rounded-md border border-white/10 bg-panel/90 p-5 shadow-glow sm:p-6">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
+                      <ReceiptText size={18} />
+                    </span>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Section</p>
+                      <h2 className="text-xl font-semibold text-white">Spending</h2>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Spent This Week</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{currency(snapshot.spentThisWeek)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Transactions</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{dashboard.transactionCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Categories</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{snapshot.weeklyCategories.length}</p>
+                    </div>
+                  </div>
+                  {snapshot.weeklyCategories.length > 0 ? (
+                    <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {snapshot.weeklyCategories.map((category) => (
+                        <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2" key={category.name}>
+                          <p className="text-sm text-slate-300">{category.name}</p>
+                          <p className="text-sm font-semibold text-white">{currency(category.total)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <MonthlyReview months={dashboard.monthlyReview} />
               </section>
 
               <section id="goals" className="scroll-mt-24 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
@@ -513,9 +529,9 @@ export function NorthStarDashboard() {
                   </div>
                   <div className="mt-6">
                     <p className="text-4xl font-semibold text-white">{currency(snapshot.totalCash)}</p>
-                    <p className="mt-2 text-sm text-slate-400">Target cash reserve: {currency(snapshot.cashGoal)}</p>
+                    <p className="mt-2 text-sm text-slate-400">Year-end cash goal: {currency(snapshot.cashGoal)}</p>
                   </div>
-                  <ProgressBar label="$30,000 cash goal" value={cashGoalProgress} />
+                  <ProgressBar label="$30,000 year-end cash goal" value={cashGoalProgress} />
                   <ProgressBar label="$20,000 safety floor" value={percentOfGoal(snapshot.checking, snapshot.safetyFloor)} />
                 </div>
 
@@ -526,38 +542,65 @@ export function NorthStarDashboard() {
                     </span>
                     <div>
                       <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Goal</p>
-                      <h3 className="text-xl font-semibold text-white">Vacation Fund</h3>
+                      <h3 className="text-xl font-semibold text-white">Travel Fund</h3>
                     </div>
                   </div>
-                  <p className="mt-6 text-4xl font-semibold text-white">{currency(snapshot.vacationFund)}</p>
-                  <div className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-4 text-sm">
+                  <p className="mt-6 text-4xl font-semibold text-white">{currency(snapshot.travelFund)}</p>
+                  <div className="mt-5 grid grid-cols-3 gap-4 border-y border-white/10 py-4 text-sm">
                     <div>
-                      <p className="text-slate-500">Weekly transfer</p>
-                      <p className="mt-1 text-xl font-semibold text-white">{currency(snapshot.weeklyVacationTransfer)}</p>
+                      <p className="text-slate-500">Weekly</p>
+                      <p className="mt-1 text-xl font-semibold text-white">{currency(snapshot.weeklyTravelContribution)}</p>
                     </div>
                     <div>
                       <p className="text-slate-500">Goal</p>
-                      <p className="mt-1 text-xl font-semibold text-white">{currency(snapshot.vacationGoal)}</p>
+                      <p className="mt-1 text-xl font-semibold text-white">{currency(snapshot.travelFundGoal)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Year-end</p>
+                      <p className="mt-1 text-xl font-semibold text-white">{currency(snapshot.travelFundYearEndProjection)}</p>
                     </div>
                   </div>
-                  <ProgressBar label="Vacation progress" value={vacationProgress} />
+                  <ProgressBar label="Travel progress" value={travelProgress} />
                 </div>
               </section>
 
-              <div id="monthly-review" className="scroll-mt-24">
-                <MonthlyReview months={dashboard.monthlyReview} />
-              </div>
+              <section id="settings" className="scroll-mt-24 rounded-md border border-white/10 bg-panel/90 p-5 shadow-glow sm:p-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-md bg-white/[0.06] text-mint">
+                    <SettingsIcon size={18} />
+                  </span>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Section</p>
+                    <h2 className="text-xl font-semibold text-white">Settings</h2>
+                  </div>
+                </div>
 
-              <div id="purchase-advisor" className="scroll-mt-24">
-                <PurchaseAdvisor snapshot={snapshot} defaultAdvice={defaultAdvice} />
-              </div>
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Active Accounts</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{dashboard.activeAccountCount}</p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Weekly Budget</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{currency(snapshot.weeklyBudget)}</p>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Safety Floor</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{currency(snapshot.safetyFloor)}</p>
+                  </div>
+                </div>
+
+                <p className="mt-5 text-sm leading-6 text-slate-400">
+                  Account controls will be added later.
+                </p>
+              </section>
             </>
           ) : null}
         </div>
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-30 rounded-md border border-white/10 bg-ink/95 px-2 py-2 shadow-glow backdrop-blur lg:hidden" aria-label="Mobile navigation">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           {navigation.map((item) => {
             const Icon = item.icon;
 
@@ -675,14 +718,14 @@ async function loadDashboardData(
 ) {
   setDashboard((current) => ({ ...current, error: "", isLoading: true }));
 
-  const [accountsResult, transactionsResult, budgetsResult, goalsResult] = await Promise.all([
+  const [accountsResult, transactionsResult, budgetsResult, goalsResult, plaidItemsResult] = await Promise.all([
     supabase
       .from("accounts")
-      .select("current_balance,is_active,name,subtype,type")
+      .select("id,current_balance,is_active,name,subtype,type")
       .order("created_at", { ascending: true }),
     supabase
       .from("transactions")
-      .select("id,amount,category,date,merchant_name,name,pending")
+      .select("id,account_id,amount,category,date,merchant_name,name,pending")
       .order("date", { ascending: false })
       .limit(500),
     supabase
@@ -692,6 +735,10 @@ async function loadDashboardData(
     supabase
       .from("goals")
       .select("current_amount,name,status,target_amount,weekly_contribution")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("plaid_items")
+      .select("last_synced_at")
       .order("created_at", { ascending: true })
   ]);
 
@@ -700,22 +747,31 @@ async function loadDashboardData(
     transactionsResult.error?.message ??
     budgetsResult.error?.message ??
     goalsResult.error?.message ??
+    plaidItemsResult.error?.message ??
     "";
 
   const accounts = (accountsResult.data ?? []) as AccountRow[];
   const transactions = (transactionsResult.data ?? []) as TransactionRow[];
   const budgets = (budgetsResult.data ?? []) as BudgetRow[];
   const goals = (goalsResult.data ?? []) as GoalRow[];
+  const plaidItems = (plaidItemsResult.data ?? []) as PlaidItemRow[];
+  const activeAccountIds = new Set(
+    accounts.filter((account) => account.is_active === true).map((account) => account.id)
+  );
+  const activeTransactions = transactions.filter((transaction) => activeAccountIds.has(transaction.account_id));
   const hasFinancialData = accounts.length > 0 || transactions.length > 0 || budgets.length > 0 || goals.length > 0;
+  const lastRefreshedAt = getMostRecentTimestamp(plaidItems.map((item) => item.last_synced_at));
 
   setDashboard({
     accountCount: accounts.length,
+    activeAccountCount: activeAccountIds.size,
     error,
     hasFinancialData,
     isLoading: false,
-    monthlyReview: buildMonthlyReview(transactions),
-    snapshot: hasFinancialData ? buildFinanceSnapshot({ accounts, budgets, goals, transactions }) : emptySnapshot,
-    transactionCount: transactions.length
+    lastRefreshedAt,
+    monthlyReview: buildMonthlyReview(activeTransactions),
+    snapshot: hasFinancialData ? buildFinanceSnapshot({ accounts, budgets, goals, transactions: activeTransactions }) : emptySnapshot,
+    transactionCount: activeTransactions.length
   });
 }
 
@@ -735,35 +791,31 @@ async function syncTransactionsForConnectedAccounts(supabase: SupabaseClient, se
   }
 }
 
-async function saveCurrentWeekBudget(supabase: SupabaseClient, session: Session, amount: number) {
-  const accessToken = await getSupabaseAccessToken(supabase, session);
-  const response = await fetch("/api/budgets/weekly", {
-    body: JSON.stringify({ amount }),
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = await readJsonResponse<{ error?: string }>(response);
+function getMostRecentTimestamp(timestamps: Array<string | null>) {
+  const newest = timestamps.reduce<number | null>((latest, timestamp) => {
+    if (!timestamp) {
+      return latest;
+    }
 
-  if (!response.ok) {
-    throw new Error(data.error ?? `Could not save weekly budget. (${response.status})`);
-  }
+    const time = new Date(timestamp).getTime();
+
+    if (Number.isNaN(time)) {
+      return latest;
+    }
+
+    return latest === null || time > latest ? time : latest;
+  }, null);
+
+  return newest === null ? null : new Date(newest).toISOString();
 }
 
-function getSafeSupabaseError(error: unknown) {
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-
-    return {
-      code: typeof record.code === "string" ? record.code : undefined,
-      details: typeof record.details === "string" ? record.details : undefined,
-      hint: typeof record.hint === "string" ? record.hint : undefined,
-      message: typeof record.message === "string" ? record.message : "Unknown Supabase error"
-    };
+function formatLastRefreshed(timestamp: string | null) {
+  if (!timestamp) {
+    return "Never";
   }
 
-  return { message: error instanceof Error ? error.message : "Unknown Supabase error" };
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(timestamp));
 }
