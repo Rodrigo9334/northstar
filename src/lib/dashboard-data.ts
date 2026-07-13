@@ -42,6 +42,7 @@ export type ReviewMonth = {
 };
 
 export type AccountRow = {
+  available_balance: number | string | null;
   id: string;
   current_balance: number | string | null;
   is_active: boolean | null;
@@ -275,7 +276,7 @@ export function buildFinanceSnapshot({
     .reduce((sum, account) => sum + amount(account.current_balance), 0);
 
   return {
-    checking: amount(checkingAccount?.current_balance),
+    checking: amount(checkingAccount?.available_balance ?? checkingAccount?.current_balance),
     travelFund,
     travelFundGoal,
     travelFundYearEndProjection,

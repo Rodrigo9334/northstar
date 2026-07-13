@@ -13,7 +13,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { AuthPanel } from "@/components/auth-panel";
-import { DashboardMetric } from "@/components/dashboard-metric";
 import { MonthlyReview } from "@/components/monthly-review";
 import { ProgressBar } from "@/components/progress-bar";
 import { PurchaseAdvisor } from "@/components/purchase-advisor";
@@ -385,13 +384,13 @@ export function NorthStarDashboard() {
             <>
               <section id="home" className="scroll-mt-24 overflow-hidden rounded-md border border-white/10 bg-panel/90 shadow-glow">
                 <div className="px-5 py-5 sm:px-6 lg:px-7">
-                  <div className="flex flex-col gap-4">
-                    <div>
+                  <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 text-center">
+                    <div className="w-full">
                       <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">NorthStar</p>
-                      <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-5xl">
+                      <h1 className="mx-auto mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-5xl">
                         {greeting}
                       </h1>
-                      <div className="mt-5 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                      <div className="mx-auto mt-5 max-w-xl rounded-md border border-white/10 bg-white/[0.03] p-4">
                         <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
                           Today's Insight
                         </p>
@@ -417,14 +416,18 @@ export function NorthStarDashboard() {
                 </div>
 
                 <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-3">
-                  <DashboardMetric
-                    icon={Landmark}
-                    label="Checking"
-                    value={currency(snapshot.checking)}
-                    helper={`${currency(snapshot.safetyFloor)} floor`}
-                  />
-                  <div className="bg-panel p-5 sm:col-span-2 sm:p-6 xl:col-span-3">
-                    <div className="flex items-start justify-between gap-3">
+                  <div className="bg-panel p-5 text-center sm:col-span-2 sm:p-6 xl:col-span-3">
+                    <div className="flex justify-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
+                        <Landmark size={18} />
+                      </span>
+                    </div>
+                    <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Checking</p>
+                    <p className="mt-2 text-4xl font-semibold text-white">{currency(snapshot.checking)}</p>
+                    <p className="mt-2 text-sm text-slate-400">{currency(snapshot.safetyFloor)} floor</p>
+                  </div>
+                  <div className="bg-panel p-5 text-center sm:col-span-2 sm:p-6 xl:col-span-3">
+                    <div className="flex items-start justify-center gap-3">
                       <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
                         <Banknote size={18} />
                       </span>
@@ -439,19 +442,32 @@ export function NorthStarDashboard() {
                     </p>
                     <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
                   </div>
-                  <DashboardMetric
-                    icon={PiggyBank}
-                    label="Travel Fund"
-                    value={currency(snapshot.travelFund)}
-                    helper={`${currency(snapshot.weeklyTravelContribution)} weekly contribution`}
-                  />
-                  <DashboardMetric
-                    icon={Target}
-                    label="$30K Goal Progress"
-                    value={`${Math.round(cashGoalProgress)}%`}
-                    helper={`${currency(snapshot.totalCash)} of ${currency(snapshot.cashGoal)}`}
-                    tone="mint"
-                  />
+                  <div className="bg-panel p-5 text-center sm:p-6">
+                    <div className="flex justify-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
+                        <PiggyBank size={18} />
+                      </span>
+                    </div>
+                    <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Travel Fund</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{currency(snapshot.travelFund)}</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      {currency(snapshot.weeklyTravelContribution)} weekly contribution
+                    </p>
+                  </div>
+                  <div className="bg-panel p-5 text-center sm:p-6 xl:col-span-2">
+                    <div className="flex justify-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
+                        <Target size={18} />
+                      </span>
+                    </div>
+                    <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                      $30K Goal Progress
+                    </p>
+                    <p className="mt-2 text-3xl font-semibold text-mint">{Math.round(cashGoalProgress)}%</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      {currency(snapshot.totalCash)} of {currency(snapshot.cashGoal)}
+                    </p>
+                  </div>
                 </div>
               </section>
 
@@ -743,7 +759,7 @@ async function loadDashboardData(
   const [accountsResult, transactionsResult, budgetsResult, goalsResult, plaidItemsResult] = await Promise.all([
     supabase
       .from("accounts")
-      .select("id,current_balance,is_active,name,subtype,type")
+      .select("id,available_balance,current_balance,is_active,name,subtype,type")
       .order("created_at", { ascending: true }),
     supabase
       .from("transactions")
