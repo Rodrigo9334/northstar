@@ -2,7 +2,6 @@
 
 import {
   Banknote,
-  CalendarDays,
   Compass,
   Landmark,
   PiggyBank,
@@ -99,6 +98,7 @@ export function NorthStarDashboard() {
   const [plaidError, setPlaidError] = useState("");
   const [refreshError, setRefreshError] = useState("");
   const [hasAttemptedTransactionSync, setHasAttemptedTransactionSync] = useState(false);
+  const [selectedSpendingCategory, setSelectedSpendingCategory] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardState>({
     accountCount: 0,
     activeAccountCount: 0,
@@ -196,6 +196,8 @@ export function NorthStarDashboard() {
   const showRealDashboard = !dashboard.isLoading && !dashboard.error && dashboard.hasFinancialData;
   const showEmptyState = !dashboard.isLoading && !dashboard.error && !dashboard.hasFinancialData;
   const lastRefreshedLabel = formatLastRefreshed(dashboard.lastRefreshedAt);
+  const selectedWeeklyCategory =
+    snapshot.weeklyCategories.find((category) => category.name === selectedSpendingCategory) ?? null;
 
   async function connectBankAccount() {
     if (!session || !supabase) {
@@ -385,23 +387,19 @@ export function NorthStarDashboard() {
                       </h1>
                     </div>
                     <div className="min-w-52 rounded-md border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Known bills</p>
-                      <p className="mt-2 text-2xl font-semibold text-white">{currency(snapshot.knownFirstOfMonthBills)}</p>
-                      <div className="mt-4 border-t border-white/10 pt-3">
-                        <button
-                          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={isRefreshingDcuData}
-                          onClick={refreshDcuData}
-                          type="button"
-                        >
-                          <RefreshCw size={16} className={isRefreshingDcuData ? "animate-spin text-mint" : "text-mint"} />
-                          {isRefreshingDcuData ? "Refreshing..." : "Refresh DCU Data"}
-                        </button>
-                        <p className="mt-2 text-xs leading-5 text-slate-500">
-                          Last refreshed: {lastRefreshedLabel}
-                        </p>
-                        {refreshError ? <p className="mt-2 text-xs leading-5 text-rose">{refreshError}</p> : null}
-                      </div>
+                      <button
+                        className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isRefreshingDcuData}
+                        onClick={refreshDcuData}
+                        type="button"
+                      >
+                        <RefreshCw size={16} className={isRefreshingDcuData ? "animate-spin text-mint" : "text-mint"} />
+                        {isRefreshingDcuData ? "Refreshing..." : "Refresh DCU Data"}
+                      </button>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        Last refreshed: {lastRefreshedLabel}
+                      </p>
+                      {refreshError ? <p className="mt-2 text-xs leading-5 text-rose">{refreshError}</p> : null}
                     </div>
                   </div>
                 </div>
@@ -413,18 +411,22 @@ export function NorthStarDashboard() {
                     value={currency(snapshot.checking)}
                     helper={`${currency(snapshot.safetyFloor)} floor`}
                   />
-                  <DashboardMetric
-                    icon={CalendarDays}
-                    label="Weekly Budget"
-                    value={currency(snapshot.weeklyBudget)}
-                    helper={`${currency(snapshot.spentThisWeek)} spent this week`}
-                  />
-                  <DashboardMetric
-                    icon={Banknote}
-                    label="Remaining This Week"
-                    value={currency(weeklyRemaining)}
-                    helper={`${Math.round(weeklySpendProgress)}% used`}
-                  />
+                  <div className="bg-panel p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
+                        <Banknote size={18} />
+                      </span>
+                      <StatusPill status={weeklyStatus} />
+                    </div>
+                    <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                      Remaining This Week
+                    </p>
+                    <p className="mt-2 text-4xl font-semibold text-mint">{currency(weeklyRemaining)}</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Spent {currency(snapshot.spentThisWeek)} of {currency(snapshot.weeklyBudget)}
+                    </p>
+                    <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
+                  </div>
                   <DashboardMetric
                     icon={PiggyBank}
                     label="Travel Fund"
@@ -439,37 +441,6 @@ export function NorthStarDashboard() {
                     tone="mint"
                   />
                 </div>
-              </section>
-
-              <section className="rounded-md border border-white/10 bg-panel/90 p-5 shadow-glow sm:p-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
-                      <CalendarDays size={18} />
-                    </span>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Section</p>
-                      <h2 className="text-xl font-semibold text-white">Weekly Budget</h2>
-                    </div>
-                  </div>
-                  <StatusPill status={weeklyStatus} />
-                </div>
-
-                <div className="mt-6 grid grid-cols-3 gap-5">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Weekly Budget</p>
-                    <p className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{currency(snapshot.weeklyBudget)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Spent This Week</p>
-                    <p className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{currency(snapshot.spentThisWeek)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Remaining</p>
-                    <p className="mt-2 text-2xl font-semibold text-mint sm:text-3xl">{currency(weeklyRemaining)}</p>
-                  </div>
-                </div>
-                <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
               </section>
 
               <div>
@@ -501,13 +472,52 @@ export function NorthStarDashboard() {
                       <p className="mt-2 text-2xl font-semibold text-white">{snapshot.weeklyCategories.length}</p>
                     </div>
                   </div>
-                  {snapshot.weeklyCategories.length > 0 ? (
+                  {selectedWeeklyCategory ? (
+                    <div className="mt-6">
+                      <button
+                        className="min-h-10 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06]"
+                        onClick={() => setSelectedSpendingCategory(null)}
+                        type="button"
+                      >
+                        Back to categories
+                      </button>
+                      <div className="mt-5 rounded-md border border-white/10 bg-white/[0.03]">
+                        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                              {selectedWeeklyCategory.name}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-300">
+                              {selectedWeeklyCategory.transactions.length} transactions
+                            </p>
+                          </div>
+                          <p className="text-lg font-semibold text-white">{currency(selectedWeeklyCategory.total)}</p>
+                        </div>
+                        <div className="divide-y divide-white/10">
+                          {selectedWeeklyCategory.transactions.map((transaction) => (
+                            <div className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3" key={transaction.id}>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-white">{transaction.merchant}</p>
+                                <p className="mt-1 text-xs text-slate-500">{transaction.date}</p>
+                              </div>
+                              <p className="text-sm font-semibold text-white">{currency(transaction.amount)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : snapshot.weeklyCategories.length > 0 ? (
                     <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {snapshot.weeklyCategories.map((category) => (
-                        <div className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2" key={category.name}>
+                        <button
+                          className="flex min-h-12 items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition hover:bg-white/[0.06]"
+                          key={category.name}
+                          onClick={() => setSelectedSpendingCategory(category.name)}
+                          type="button"
+                        >
                           <p className="text-sm text-slate-300">{category.name}</p>
-                          <p className="text-sm font-semibold text-white">{currency(category.total)}</p>
-                        </div>
+                          <span className="text-sm font-semibold text-white">{currency(category.total)}</span>
+                        </button>
                       ))}
                     </div>
                   ) : null}

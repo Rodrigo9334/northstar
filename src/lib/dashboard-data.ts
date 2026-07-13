@@ -19,6 +19,7 @@ export type FinanceSnapshot = {
 export type WeeklyCategory = {
   name: string;
   total: number;
+  transactions: Transaction[];
 };
 
 export type Transaction = {
@@ -185,16 +186,32 @@ function weeklyCategoryName(transaction: TransactionRow) {
 }
 
 function buildWeeklyCategories(transactions: TransactionRow[]) {
-  const categories = new Map<string, number>();
+  const categories = new Map<string, Transaction[]>();
 
   transactions.forEach((transaction) => {
     const name = weeklyCategoryName(transaction);
+    const categoryTransactions = categories.get(name) ?? [];
 
-    categories.set(name, (categories.get(name) ?? 0) + amount(transaction.amount));
+    categories.set(name, [
+      ...categoryTransactions,
+      {
+        id: transaction.id,
+        amount: amount(transaction.amount),
+        date: new Date(`${transaction.date}T00:00:00`).toLocaleDateString("en-US", {
+          day: "2-digit",
+          month: "short"
+        }),
+        merchant: transaction.merchant_name ?? transaction.name
+      }
+    ]);
   });
 
   return Array.from(categories.entries())
-    .map(([name, total]) => ({ name, total }))
+    .map(([name, categoryTransactions]) => ({
+      name,
+      total: categoryTransactions.reduce((sum, transaction) => sum + transaction.amount, 0),
+      transactions: categoryTransactions
+    }))
     .sort((left, right) => right.total - left.total);
 }
 
