@@ -58,6 +58,7 @@ const emptySnapshot: FinanceSnapshot = {
   cashGoal: 30000,
   safetyFloor: 20000,
   weeklyBudget: 0,
+  spentToday: 0,
   spentThisWeek: 0,
   weeklyCategories: [],
   weeklyTravelContribution: 50,
@@ -67,7 +68,7 @@ const emptySnapshot: FinanceSnapshot = {
 };
 
 const navigation = [
-  { href: "#home", label: "Home", icon: Compass },
+  { href: "#home", label: "NorthStar", icon: Compass },
   { href: "#spending", label: "Spending", icon: ReceiptText },
   { href: "#goals", label: "Goals", icon: Target },
   { href: "#settings", label: "Settings", icon: SettingsIcon }
@@ -198,6 +199,11 @@ export function NorthStarDashboard() {
   const lastRefreshedLabel = formatLastRefreshed(dashboard.lastRefreshedAt);
   const selectedWeeklyCategory =
     snapshot.weeklyCategories.find((category) => category.name === selectedSpendingCategory) ?? null;
+  const greeting = getGreeting();
+  const todaysInsight =
+    snapshot.spentToday === 0
+      ? "You haven't spent anything today. Great start."
+      : `You spent ${currency(snapshot.spentToday)} today.`;
 
   async function connectBankAccount() {
     if (!session || !supabase) {
@@ -346,7 +352,7 @@ export function NorthStarDashboard() {
                 </span>
                 <div>
                   <p className="text-lg font-semibold">NorthStar</p>
-                  <p className="text-xs text-slate-400">Home</p>
+                  <p className="text-xs text-slate-400">Daily briefing</p>
                 </div>
               </div>
               <span className="rounded-md border border-white/10 px-3 py-2 text-xs font-medium text-slate-300">
@@ -378,13 +384,19 @@ export function NorthStarDashboard() {
           {showRealDashboard ? (
             <>
               <section id="home" className="scroll-mt-24 overflow-hidden rounded-md border border-white/10 bg-panel/90 shadow-glow">
-                <div className="border-b border-white/10 px-5 py-5 sm:px-6 lg:px-7">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="px-5 py-5 sm:px-6 lg:px-7">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">Home</p>
+                      <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">NorthStar</p>
                       <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-5xl">
-                        Cash clarity for the week ahead
+                        {greeting}
                       </h1>
+                      <div className="mt-5 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                        <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                          Today's Insight
+                        </p>
+                        <p className="mt-2 text-base leading-6 text-slate-200">{todaysInsight}</p>
+                      </div>
                     </div>
                     <div className="min-w-52 rounded-md border border-white/10 bg-white/[0.04] px-4 py-3">
                       <button
@@ -404,14 +416,8 @@ export function NorthStarDashboard() {
                   </div>
                 </div>
 
-                <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
-                  <DashboardMetric
-                    icon={Landmark}
-                    label="Checking Balance"
-                    value={currency(snapshot.checking)}
-                    helper={`${currency(snapshot.safetyFloor)} floor`}
-                  />
-                  <div className="bg-panel p-5 sm:p-6">
+                <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="bg-panel p-5 sm:col-span-2 sm:p-6 xl:col-span-3">
                     <div className="flex items-start justify-between gap-3">
                       <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
                         <Banknote size={18} />
@@ -428,6 +434,12 @@ export function NorthStarDashboard() {
                     <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
                   </div>
                   <DashboardMetric
+                    icon={Landmark}
+                    label="Checking"
+                    value={currency(snapshot.checking)}
+                    helper={`${currency(snapshot.safetyFloor)} floor`}
+                  />
+                  <DashboardMetric
                     icon={PiggyBank}
                     label="Travel Fund"
                     value={currency(snapshot.travelFund)}
@@ -435,7 +447,7 @@ export function NorthStarDashboard() {
                   />
                   <DashboardMetric
                     icon={Target}
-                    label="Year-End Cash Goal"
+                    label="$30K Goal Progress"
                     value={`${Math.round(cashGoalProgress)}%`}
                     helper={`${currency(snapshot.totalCash)} of ${currency(snapshot.cashGoal)}`}
                     tone="mint"
@@ -828,4 +840,18 @@ function formatLastRefreshed(timestamp: string | null) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(timestamp));
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return "Good Morning, Rodrigo ☀️";
+  }
+
+  if (hour < 18) {
+    return "Good Afternoon, Rodrigo 👋";
+  }
+
+  return "Good Evening, Rodrigo 🌙";
 }

@@ -8,6 +8,7 @@ export type FinanceSnapshot = {
   cashGoal: number;
   safetyFloor: number;
   weeklyBudget: number;
+  spentToday: number;
   spentThisWeek: number;
   weeklyCategories: WeeklyCategory[];
   weeklyTravelContribution: number;
@@ -251,6 +252,18 @@ export function buildFinanceSnapshot({
 
     return transactionDate >= weekStart && transactionDate < weekEnd && countsTowardWeeklyBudget(transaction);
   });
+  const today = new Date();
+  const spentToday = weeklyTransactions
+    .filter((transaction) => {
+      const transactionDate = new Date(`${transaction.date}T00:00:00`);
+
+      return (
+        transactionDate.getDate() === today.getDate() &&
+        transactionDate.getMonth() === today.getMonth() &&
+        transactionDate.getFullYear() === today.getFullYear()
+      );
+    })
+    .reduce((sum, transaction) => sum + amount(transaction.amount), 0);
   const spentThisWeek = weeklyTransactions.reduce((sum, transaction) => sum + amount(transaction.amount), 0);
   const travelFund = amount(travelGoal?.current_amount) || TRAVEL_FUND_DEFAULT;
   const weeklyTravelContribution = amount(travelGoal?.weekly_contribution) || WEEKLY_TRAVEL_CONTRIBUTION_DEFAULT;
@@ -271,6 +284,7 @@ export function buildFinanceSnapshot({
     cashGoal: amount(cashGoal?.target_amount) || CASH_GOAL_DEFAULT,
     safetyFloor: amount(safetyGoal?.target_amount) || SAFETY_FLOOR_DEFAULT,
     weeklyBudget: WEEKLY_BUDGET_DEFAULT,
+    spentToday,
     spentThisWeek,
     weeklyCategories: buildWeeklyCategories(weeklyTransactions),
     weeklyTravelContribution,
