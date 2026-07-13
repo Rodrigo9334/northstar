@@ -385,7 +385,7 @@ export function NorthStarDashboard() {
             <>
               <section id="home" className="scroll-mt-24 overflow-hidden rounded-md border border-white/10 bg-panel/90 shadow-glow">
                 <div className="px-5 py-5 sm:px-6 lg:px-7">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex flex-col gap-4">
                     <div>
                       <p className="text-sm font-medium uppercase tracking-[0.24em] text-mint">NorthStar</p>
                       <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-5xl">
@@ -398,9 +398,9 @@ export function NorthStarDashboard() {
                         <p className="mt-2 text-base leading-6 text-slate-200">{todaysInsight}</p>
                       </div>
                     </div>
-                    <div className="min-w-52 rounded-md border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <div className="mx-auto w-full max-w-xs rounded-md border border-white/10 bg-white/[0.04] px-4 py-3 text-center">
                       <button
-                        className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={isRefreshingDcuData}
                         onClick={refreshDcuData}
                         type="button"
@@ -417,6 +417,12 @@ export function NorthStarDashboard() {
                 </div>
 
                 <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-3">
+                  <DashboardMetric
+                    icon={Landmark}
+                    label="Checking"
+                    value={currency(snapshot.checking)}
+                    helper={`${currency(snapshot.safetyFloor)} floor`}
+                  />
                   <div className="bg-panel p-5 sm:col-span-2 sm:p-6 xl:col-span-3">
                     <div className="flex items-start justify-between gap-3">
                       <span className="flex h-10 w-10 items-center justify-center rounded-md bg-mint/15 text-mint">
@@ -433,12 +439,6 @@ export function NorthStarDashboard() {
                     </p>
                     <ProgressBar label="Weekly spend used" value={weeklySpendProgress} />
                   </div>
-                  <DashboardMetric
-                    icon={Landmark}
-                    label="Checking"
-                    value={currency(snapshot.checking)}
-                    helper={`${currency(snapshot.safetyFloor)} floor`}
-                  />
                   <DashboardMetric
                     icon={PiggyBank}
                     label="Travel Fund"
