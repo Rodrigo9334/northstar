@@ -187,7 +187,7 @@ export function NorthStarDashboard() {
   }
 
   const snapshot = dashboard.snapshot;
-  const weeklyRemaining = snapshot.weeklyBudget - snapshot.spentThisWeek;
+  const weeklyRemaining = Math.max(0, snapshot.weeklyBudget - snapshot.spentThisWeek);
   const weeklyStatus = getWeeklyBudgetStatus(snapshot.spentThisWeek, snapshot.weeklyBudget || 1);
   const travelProgress = percentOfGoal(snapshot.travelFund, snapshot.travelFundGoal);
   const cashGoalProgress = percentOfGoal(snapshot.totalCash, snapshot.cashGoal);
@@ -453,6 +453,7 @@ export function NorthStarDashboard() {
                     <p className="mt-2 text-sm text-slate-400">
                       {currency(snapshot.weeklyTravelContribution)} weekly contribution
                     </p>
+                    <ProgressBar label="Travel progress" value={travelProgress} />
                   </div>
                   <div className="bg-panel p-5 text-center sm:p-6 xl:col-span-2">
                     <div className="flex justify-center">
@@ -467,6 +468,7 @@ export function NorthStarDashboard() {
                     <p className="mt-2 text-sm text-slate-400">
                       {currency(snapshot.totalCash)} of {currency(snapshot.cashGoal)}
                     </p>
+                    <ProgressBar label="$30K goal progress" value={cashGoalProgress} />
                   </div>
                 </div>
               </section>

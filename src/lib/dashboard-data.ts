@@ -141,19 +141,50 @@ function countsTowardWeeklyBudget(transaction: TransactionRow) {
 
   const excludedCategories = [
     "BANK_FEES",
+    "GENERAL_SERVICES_OTHER_GENERAL_SERVICES",
     "TRANSFER_IN",
     "TRANSFER_OUT",
     "LOAN_PAYMENTS",
+    "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+    "LOAN_PAYMENTS_PERSONAL_LOAN_PAYMENT",
+    "LOAN_PAYMENTS_MORTGAGE_PAYMENT",
     "RENT_AND_UTILITIES",
+    "RENT_AND_UTILITIES_GAS_AND_ELECTRICITY",
+    "RENT_AND_UTILITIES_INTERNET_AND_CABLE",
+    "RENT_AND_UTILITIES_RENT",
+    "RENT_AND_UTILITIES_TELEPHONE",
+    "RENT_AND_UTILITIES_WATER",
     "INCOME",
-    "BILLS_AND_UTILITIES"
+    "BILLS_AND_UTILITIES",
+    "TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS",
+    "TRANSFER_OUT_SAVINGS",
+    "TRANSFER_OUT_ACCOUNT_TRANSFER",
+    "TRANSFER_OUT_WITHDRAWAL",
+    "TRANSFER_IN_ACCOUNT_TRANSFER",
+    "TRANSFER_IN_SAVINGS"
   ];
   const description = `${transaction.category ?? ""} ${transaction.merchant_name ?? ""} ${transaction.name}`.toLowerCase();
 
   if (
-    ["bill", "utility", "utilities", "rent", "mortgage", "loan", "insurance", "travel fund"].some((term) =>
-      description.includes(term)
-    )
+    [
+      "account transfer",
+      "autopay",
+      "bill",
+      "cc payment",
+      "credit card payment",
+      "loan",
+      "loan payment",
+      "mortgage",
+      "rent",
+      "saving",
+      "savings",
+      "transfer",
+      "travel fund",
+      "utility",
+      "utilities",
+      "venmo cashout",
+      "withdrawal"
+    ].some((term) => description.includes(term))
   ) {
     return false;
   }
@@ -228,7 +259,7 @@ export function buildFinanceSnapshot({
   goals: GoalRow[];
   transactions: TransactionRow[];
 }): FinanceSnapshot {
-  const activeAccounts = accounts.filter((account) => account.is_active !== false);
+  const activeAccounts = accounts.filter((account) => account.is_active === true);
   const activeAccountIds = new Set(activeAccounts.map((account) => account.id));
   const activeTransactions = transactions.filter((transaction) =>
     activeAccountIds.has(transaction.account_id)
